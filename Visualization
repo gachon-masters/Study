@@ -1,0 +1,1182 @@
+rm(list = ls())
+options(scipen = 100)
+
+
+# Import Packages ---------------------------------------------------------
+
+if (!require(dplyr)) {install.packages("dplyr")}; require(dplyr)
+if (!require(data.table)) {install.packages("data.table")}; require(data.table)
+if (!require(ggplot2)) {install.packages("ggplot2")}; require(ggplot2)
+if (!require(gridExtra)) {install.packages("gridExtra")}; require(gridExtra)
+if (!require(Hmisc)) {install.packages("Hmisc")}; require(Hmisc)
+if (!require(pastecs)) {install.packages("pastecs")}; require(pastecs)
+if (!require(psych)) {install.packages("psych")}; require(psych)
+if (!require(summarytools)) {install.packages("summarytools")}; require(summarytools)
+if (!require(dlookr)) {install.packages("dlookr")}; require(dlookr)
+if (!require(Amelia)) {install.packages("Amelia")}; require(Amelia)
+if (!require(mice)) {install.packages("mice")}; require(mice)
+if (!require(DMwR)) {install.packages("DMwR")}; require(DMwR)
+if (!require(DataExplorer)) {install.packages("DataExplorer")}; require(DataExplorer)
+if (!require(corrplot)) {install.packages("corrplot")}; require(corrplot)
+if (!require(GGally)) {install.packages("GGally")}; require(GGally)
+if (!require(lubridate)) {install.packages("lubridate")}; require(lubridate)
+if (!require(stringr)) {install.packages("stringr")}; require(stringr)
+if (!require(caret)) {install.packages("caret")}; require(caret)
+
+
+
+# Data Summary ------------------------------------------------------------
+
+data("diamonds")
+diamonds # 53940 x 10
+
+str(diamonds)
+
+head(diamonds, 10)
+tail(diamonds, 10)
+
+summary(diamonds)
+class(diamonds) # "tbl_df"     "tbl"        "data.frame"
+
+names(diamonds)
+
+object.size(diamonds) # 3456848 bytes
+
+# Tukey Five-Number Summaries
+fivenum(diamonds$price)
+?fivenum # minimum, lower-hinge, median, upper-hinge, maximum
+
+# Using "Hmisc" package
+Hmisc::describe(diamonds)
+
+# Using "pastecs" package
+pastecs::stat.desc(diamonds)
+?stat.desc
+class(pastecs::stat.desc(diamonds)) # data.frame
+pastecs::stat.desc(diamonds)[1, ]
+rownames(pastecs::stat.desc(diamonds))
+
+# Using "psych" package
+psych::describe(diamonds)
+
+# Using "summarytools" package
+?descr
+summarytools::descr(diamonds)
+summarytools::descr(diamonds, transpose = TRUE)
+summarytools::dfSummary(diamonds) %>% View
+
+
+
+# Missing Values ----------------------------------------------------------
+
+colSums(is.na(diamonds))
+colSums(mtcars)
+colSums(is.nan(diamonds)) # Error
+
+na.omit(diamonds)
+
+df <- data.frame(A = c(1:5),
+                 B = c(letters[1:5]),
+                 C = c("x", "y", NA, "z", NA)); df
+colSums(is.na(df))
+na.omit(df)
+complete.cases(df)
+df[complete.cases(df), ]
+
+colSums(is.na(airquality))
+airquality[!complete.cases(airquality), ]
+
+dlookr::find_na(airquality, rate = TRUE)
+dlookr::find_na(df, rate = TRUE) # proportion
+dlookr::diagnose(airquality)
+dlookr::diagnose(df)
+
+Amelia::missmap(airquality, main = "Missing Values Map", col = c("yellow", "grey"), legend = TRUE)
+
+# Using "mice" package to replace the missing values
+head(airquality)
+dat <- airquality
+tempdat <- mice::mice(dat, maxit = 50, method = "pmm") # pmm, logreg, polyreg, polr
+summary(tempdat) 
+tempdat$imp$Ozone
+tempdat$imp$Solar.R
+
+fit <- with(data = tempdat, exp = lm(Ozone ~ Solar.R))
+fit
+
+combine <- mice::pool(fit)
+summary(combine)
+
+completedat <- mice::complete(tempdat, 1)
+summary(lm(Ozone ~ Solar.R, data = completedat))
+
+# Using "Amelia" package to replace the missing values
+dat <- airquality
+tempdat2 <- Amelia::amelia(x = dat, m = 5)
+summary(tempdat2)
+
+tempdat2$imputations[[1]]
+tempdat2$imputations[[2]]
+tempdat2$imputations[[1]]$Ozone
+tempdat2$imputations[[2]]$Ozone
+
+# https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/
+
+# Using "DMwR" package
+dat <- airquality
+colSums(is.na(airquality))
+
+# NA -> central value
+DMwR::centralImputation(dat)
+DMwR::centralValue(dat)
+
+# NA -> knn weighted mean, default k = 10
+DMwR::knnImputation(dat, k = 10)
+DMwR::knnImputation(dat, k = 5)
+
+
+
+# Data Merging ------------------------------------------------------------
+
+x <- data.frame(A = 1:5, key = letters[1:5])
+y <- data.frame(A = 3:6, key = letters[3:6])
+
+rbind(x, y)
+cbind(x[1:4, ], y)
+
+# Using base function "merge"
+merge(x, y, by = "key") # inner join
+merge(x, y, by = "key", all = TRUE) # outer join
+merge(x, y, by = "key", all.x = TRUE) # left join
+merge(x, y, by = "key", all.y = TRUE) # right join
+
+# Using "dplyr" package
+x <- data.frame(A = 1:5, key1 = letters[1:5])
+y <- data.frame(A = 3:6, key2 = letters[3:6])
+
+dplyr::inner_join(x, y , by = c("key1" = "key2"))
+dplyr::full_join(x, y, by = c("key1" = "key2"))
+dplyr::left_join(x, y, by = c("key1" = "key2"))
+dplyr::right_join(x, y, by = c("key1" = "key2"))
+
+# from data.frame to list, from list to data.frame by rbind()
+splitdat <- split(diamonds, diamonds$cut)
+class(splitdat)
+
+do.call("rbind", splitdat)
+data.table::rbindlist(splitdat)
+
+
+
+# dplyr -------------------------------------------------------------------
+
+head(diamonds, 10)
+diamonds %>% group_by(cut) %>% tally()
+diamonds %>% count(cut)
+diamonds %>% group_by(cut) %>% summarise(n = n(),
+                                         distinct = n_distinct(clarity),
+                                         min = min(price),
+                                         max = max(price),
+                                         median = median(price),
+                                         mean = median(price),
+                                         sd = sd(price),
+                                         q1 = quantile(price, 0.25),
+                                         q3 = quantile(price, 0.75))
+
+diamonds %>% select(cut, carat, price) %>% arrange(price)
+diamonds %>% select(cut, carat, price) %>% arrange(desc(price))
+
+names(diamonds)
+diamonds %>% select(carat, cut, color, clarity)
+diamonds %>% select(1:4)
+diamonds %>% select(contains("c"))
+diamonds %>% select(starts_with("c"))
+diamonds %>% select(ends_with("e"))
+diamonds %>% select(x, y, z, everything())
+
+diamonds %>% filter(cut == "Premium" & color == "E")
+
+# compare that data.frames are wheter equal or not
+df1 <- diamonds
+df2 <- diamonds
+
+all_equal(df1, df2, ignore_col_order = T, ignore_row_order = T) # TRUE
+
+bind_cols(df1, df2)
+bind_rows(df1, df2)
+
+distinct(diamonds)
+
+df3 <- rename(df1,
+              Price = price,
+              X = x,
+              Y = y,
+              Z = z); df3
+
+select <- dplyr::select
+
+
+
+# same results ------------------------------------------------------------
+
+tapply(diamonds$price, diamonds$cut, mean)
+aggregate(price ~ cut + color, diamonds, mean)
+diamonds %>% group_by(cut, color) %>% summarise(price_mean = mean(price),
+                                                price_sd = sd(price)) %>% arrange(desc(price_mean))
+dat <- data.table(diamonds)
+dat[, .(price_mean = mean(price), 
+        price_sd = sd(price)), 
+    by = .(cut, color)][order(price_mean, decreasing = TRUE)]
+dat[, list(price_mean = mean(price), 
+           price_sd = sd(price)), 
+    by = .(cut, color)][order(price_mean, decreasing = TRUE)]
+
+
+diamonds %>% group_by(cut, clarity) %>% summarise(n = n()) %>% arrange(cut, clarity)
+diamonds %>% group_by(cut, clarity) %>% tally()
+dat[, .N, by = .(cut, clarity)][order(cut, clarity)]
+
+dat[, lapply(.SD, mean), by = .(cut, color, clarity)]
+dat[, lapply(.SD, mean), by = .(cut, color, clarity), .SDcols = c("carat", "price")]
+
+diamonds[diamonds$cut == "Premium" & diamonds$color == "E", !names(diamonds) %in% c("x", "y", "z")]
+base::subset(diamonds, subset = cut == "Premium" & color == "E", select = !names(diamonds) %in% c("x", "y", "z"))
+diamonds %>% filter(cut == "Premium" & color == "E") %>% select(-x, -y, -z)
+data.table(diamonds)[cut == "Premium" & color == "E", -c("x", "y", "z")]
+
+
+
+# EDA ---------------------------------------------------------------------
+
+plot(mtcars)
+
+# Using "DataExplorer" package
+DataExplorer::plot_str(diamonds)
+DataExplorer::plot_missing(airquality)
+DataExplorer::plot_histogram(diamonds)
+DataExplorer::plot_density(diamonds)
+DataExplorer::plot_bar(diamonds)
+DataExplorer::plot_correlation(diamonds, type = "continuous")
+DataExplorer::create_report(diamonds) # total report
+
+
+# Using "corrplot" package, https://rpubs.com/cardiomoon/27080
+mtcars_cor <- cor(mtcars)
+?corrplot
+corrplot::corrplot(mtcars_cor, method = "circle")
+corrplot::corrplot(mtcars_cor, method = "ellipse")
+corrplot::corrplot(mtcars_cor, method = "square")
+corrplot::corrplot(mtcars_cor, method = "shade")
+corrplot::corrplot(mtcars_cor, method = "number")
+corrplot::corrplot(mtcars_cor, method = "pie")
+corrplot::corrplot(mtcars_cor, 
+                   method = "shade",
+                   addshade = "all",
+                   tl.col = "black", # label color
+                   tl.srt = 30, # upper label angle
+                   diag = FALSE,
+                   addCoef.col = "yellow", # number color
+                   order = "FPC" # "FPC", "hclust", "AOE
+)
+
+corrplot::corrplot(mtcars_cor, type = "upper")
+corrplot::corrplot(mtcars_cor, type = "lower")
+
+corrplot::corrplot.mixed(mtcars_cor)
+corrplot::corrplot.mixed(mtcars_cor, lower = "ellipse", upper = "circle")
+corrplot::corrplot.mixed(mtcars_cor, lower = "ellipse", upper = "shade")
+corrplot::corrplot.mixed(mtcars_cor, lower = "ellipse", upper = "number")
+
+corrplot::corrplot(mtcars_cor, order = "AOE")
+corrplot::corrplot(mtcars_cor, order = "hclust")
+corrplot::corrplot(mtcars_cor, order = "FPC")
+corrplot::corrplot(mtcars_cor, order = "alphabet")
+
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2) # especially apply on "hclust"
+
+# chage the colors
+col1 <- colorRampPalette(c("#7F0000", "red", "#FF7F00", "yellow", "white", "cyan", 
+                           "#007FFF", "blue", "#00007F"))
+col2 <- colorRampPalette(c("#67001F", "#B2182B", "#D6604D", "#F4A582", "#FDDBC7", 
+                           "#FFFFFF", "#D1E5F0", "#92C5DE", "#4393C3", "#2166AC", "#053061"))
+col3 <- colorRampPalette(c("red", "white", "blue"))
+col4 <- colorRampPalette(c("#7F0000", "red", "#FF7F00", "yellow", "#7FFF7F", 
+                           "cyan", "#007FFF", "blue", "#00007F"))
+wb <- c("white", "black")
+
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2, col = col1(100))
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2, col = col2(50))
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2, col = col3(20))
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2, col = col4(10))
+corrplot::corrplot(mtcars_cor, order = "hclust", addrect = 2, col = wb, bg = "gold2")
+
+# remove the color legend & text legend
+corrplot::corrplot(mtcars_cor, cl.pos = "n", tl.pos = "n")
+
+
+# pairs()
+panel.lm <- function(x, y, col = par("col"), bg = NA, pch = par("pch"), 
+                     cex = 1, col.smooth = "black", ...) {
+  points(x, y, pch = pch, col = col, bg = bg, cex = cex) 
+  abline(stats::lm(y ~ x), col = col.smooth, ...)
+} 
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+} 
+panel.hist <- function(x, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+} 
+
+pairs(mtcars,
+      lower.panel = panel.lm,
+      upper.panel = panel.cor,
+      diag.panel = panel.hist,
+      pch = "*",
+      main = "scatterplot matrix with correlation coef & histogram")    
+
+pairs(iris[, 1:4], col = iris$Species)
+
+# Using "psych" package
+psych::pairs.panels(mtcars,
+                    method = "pearson",
+                    hist.col = "yellow",
+                    density = TRUE,
+                    ellipses = TRUE)
+
+# Using "GGally" package
+GGally::ggcorr(mtcars, palette = "RdYlGn", name = "rho", label = FALSE, label_color = "black")
+GGally::ggcorr(mtcars, palette = "TdBu", label = TRUE)
+
+GGally::ggpairs(mtcars, columns = 1:ncol(mtcars), title = "", axisLabels = "show", columnLabels = colnames(mtcars))
+
+# graphics skills ggplot2, lattice etc...
+
+
+
+# lubridate package -------------------------------------------------------
+
+# Using "base" functions
+as.Date("2019-03-28") # "2019-03-28"
+as.Date("2019-3-28") # "2019-03-28"
+as.Date("2019/03/28") # "2019-03-28"
+class(as.Date("2019-03-28")) # "Date" type
+
+as.Date("03-28-2019") # Error
+
+as.Date("2019-03-28 16:35:22") # "2019-03-28"
+as.POSIXct("2019-03-28 16:35:22") # "2019-03-28 16:35:22 KST"
+as.POSIXct("2019-03-28 16") # "2019-03-28 KST", no hmd informations
+class(as.POSIXct("2019-03-28 16:35:22")) # "POSIXct" "POSIXt"
+
+# Using "lubridate" package - flexible
+lubridate::mdy("03-28-2019") # "2019-03-28"
+lubridate::dmy("28-3-19") # "2019-03-28"
+lubridate::ymd("19/3/28") # "2019-03-28"
+lubridate::ymd("19.3.28") # "2019-03-28"
+lubridate::ymd("19|3|28") # "2019-03-28"
+lubridate::ymd("19_3|28") # "2019-03-28"
+lubridate::ymd("19!3@28") # "2019-03-28"
+lubridate::ymd("19 3 28") # "2019-03-28"
+lubridate::ymd("19 fuck 3 you 28") # "2019-03-28"
+class(lubridate::ymd("19/3/28")) # "Date" type
+
+lubridate::ymd_hms("2019-03-28 16:35:22") # "2019-03-28 16:35:22 UTC"
+lubridate::ymd_h("2019-03-28 16") # "2019-03-28 16:00:00 UTC"
+
+lubridate::now() # return now
+lubridate::am(lubridate::now())
+lubridate::pm(lubridate::now())
+
+now <- lubridate::ymd_hms("19-03.28 16_35-22"); now # "2019-03-28 16:35:22 UTC"
+lubridate::year(now)
+lubridate::month(now)
+lubridate::month(now, label = TRUE, abbr = FALSE)
+lubridate::day(now)
+lubridate::wday(now)
+lubridate::wday(now, label = TRUE)
+lubridate::yday(now)
+lubridate::hour(now)
+lubridate::minute(now)
+lubridate::second(now)
+
+# change the hour
+now
+hour(now) <- 17
+now
+
+# caculation
+now - lubridate::days(2) # "2019-03-26 17:35:22 UTC"
+now + lubridate::hours(5) # "2019-03-28 22:35:22 UTC"
+# days, seconds, minutes, hours, weeks, years, milliseconds, microseconds, nanoseconds, picoseconds
+
+lubridate::ymd("2019-01-31") + months(0:11) # if months have no 31st day, return "NA"
+
+# dplyr + lubridate, practice with lakres data
+data(lakers)
+head(lakers)
+
+
+
+lubridate::ymd(lakers$date)
+lubridate::hm(lakers$time)
+
+lakers2 <- lakers %>% mutate(date_time = lubridate::ymd_hm(paste(date, time))) %>% select(-date, -time) %>% select(date_time, everything())
+lakers2 %>% group_by(month(date_time)) %>% summarise(mean_x = mean(x, na.rm = TRUE),
+                                                     mean_y = mean(y, na.rm = TRUE))
+lakers2 %>% group_by(day(date_time)) %>% summarise(mean_x = mean(x, na.rm = TRUE),
+                                                   mean_y = mean(y, na.rm = TRUE))
+lakers2 %>% filter(date_time >= ymd_hms("2008-10-22 12:00:00"))
+# inverval, %--%
+interval <- ymd_hms("2008-10-28 12:00:00") %--% ymd_hms("2009-03-09 00:33:00")
+lakers2 %>% filter(date_time %within% interval)
+
+now
+lubridate::round_date(now, "hour")
+lubridate::round_date(now, "day")
+
+lubridate::floor_date(now, "hour")
+lubridate::floor_date(now, "day")
+
+lubridate::ceiling_date(now, "hour")
+lubridate::ceiling_date(now, "day")
+
+
+
+# stringr package -----------------------------------------------------------------
+
+# example data
+data("sentences")
+data("fruit")
+data("words")
+sentences
+fruit
+words
+carnames <- rownames(mtcars)
+
+Hmisc::capitalize(fruit)
+
+str_extract(fruit, pattern = "berry")
+str_detect(fruit, pattern = fixed("berry"))
+str_detect(fruit, pattern = "berry")
+fruit[str_detect(fruit, pattern = "berry")]
+str_subset(fruit, pattern = "berry")
+str_count(fruit, pattern = "berry")
+str_split(sentences, pattern = " ")
+str_split(sentences, pattern = " ") %>% lapply(length) %>% unlist()
+str_split(sentences, pattern = " ", simplify = TRUE)
+str_replace(fruit, pattern = "berry", replacement = "BERRY")
+str_length(fruit)
+str_c(sentences, collapse = " ")
+str_c("old", fruit, sep = " ")
+str_sub(fruit, start = -5, end = -1)
+
+carnames[str_detect(carnames, regex(pattern = "Merc", ignore_case = TRUE))]
+str_detect(c("jae ho", "Jae Ho", "JAE HO", "jaeho"), regex(pattern = "jae ho", ignore_case = TRUE))
+
+str_extract(carnames, ".a.")
+str_extract(carnames, ".a")
+str_extract(carnames, "a.")
+
+carnames[str_detect(carnames, ".a")]
+carnames[str_detect(carnames, ".a.")]
+carnames[str_detect(carnames, "a.")]
+
+carnames %>% str_extract("[[:digit:]]{1,}")
+carnames %>% str_extract("[[:alpha:]]{1,}")
+carnames %>% str_extract_all("[[:alpha:]]{1,}")
+carnames %>% str_extract_all("[[:alnum:]]{1,}")
+carnames %>% str_extract_all("[[:upper:]]{1,}")
+carnames %>% str_extract_all("[[:lower:]]{1,}")
+carnames %>% str_extract_all("[[:graph:]]{1,}") # letters, numbers, punctuation
+carnames %>% str_extract_all("[[:print:]]{1,}") # letters, numbers, punctuation, whitespace
+
+# https://rpubs.com/iPhuoc/stringr_manipulation
+# https://stringr.tidyverse.org/articles/regular-expressions.html
+
+
+
+# caret package  ----------------------------------------------------------
+
+# https://topepo.github.io/caret/index.html
+
+### Visualization ###
+# classification
+
+featurePlot(x = iris[, 1:4],
+            y = iris$Species,
+            plot = "ellipse",
+            auto.key = list(columns = 3)) # for classification box, strip, density, pairs, ellipse & for regression pairs, sccater
+
+featurePlot(x = iris[, 1:4], 
+            y = iris$Species, 
+            plot = "box", 
+            ## Pass in options to bwplot() 
+            scales = list(y = list(relation = "free"),
+                          x = list(rot = 90)),  
+            layout = c(4, 1), 
+            auto.key = list(columns = 2))
+
+featurePlot(x = iris[, 1:4],
+            y = iris$Species,
+            plot = "strip",
+            auto.key = list(columns = 3))
+
+featurePlot(x = iris[, 1:4],
+            y = iris$Species,
+            plot = "density",
+            auto.key = list(columns = 3))
+featurePlot(x = iris[, 1:4], 
+            y = iris$Species,
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(4, 1), 
+            auto.key = list(columns = 3))
+
+featurePlot(x = iris[, 1:4],
+            y = iris$Species,
+            plot = "pairs",
+            auto.key = list(columns = 3))
+
+
+# regression
+library(mlbench)
+data(BostonHousing)
+regVar <- c("age", "lstat", "tax")
+str(BostonHousing[, regVar])
+
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+
+featurePlot(x = BostonHousing[, regVar], 
+            y = BostonHousing$medv, 
+            plot = "scatter", 
+            layout = c(3, 1))
+
+featurePlot(x = BostonHousing[, regVar], 
+            y = BostonHousing$medv, 
+            plot = "scatter",
+            type = c("p", "smooth"),
+            span = .5,
+            layout = c(3, 1))
+
+
+### Creating Dummy Variables ###
+if (!require(earth)) {install.packages("earth")}; require(earth)
+data(etitanic)
+head(model.matrix(survived ~ ., data = etitanic))
+
+dummies <- dummyVars(survived ~ ., data = etitanic)
+head(predict(dummies, newdata = etitanic))
+
+
+### Zero- and Near Zero-Variance Predictors ###
+data(mdrr)
+data.frame(table(mdrrDescr$nR11))
+
+?nearZeroVar
+nzv <- nearZeroVar(mdrrDescr, saveMetrics= TRUE)
+nzv[nzv$nzv,] # near zero variance
+
+nzv <- nearZeroVar(mdrrDescr)
+filteredDescr <- mdrrDescr[, -nzv]
+
+dim(mdrrDescr) # 528, 342
+dim(filteredDescr) # 528, 297
+
+
+### Identifying Corrlated Predictors ###
+descrCor <- cor(filteredDescr)
+highCorr <- sum(abs(descrCor[upper.tri(descrCor)]) > .999)
+summary(descrCor[upper.tri(descrCor)])
+
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .75)
+filteredDescr <- filteredDescr[,-highlyCorDescr]
+descrCor2 <- cor(filteredDescr)
+summary(descrCor2[upper.tri(descrCor2)])
+
+
+### Linear Dependencies ###
+ltfrDesign <- matrix(0, nrow = 6, ncol = 6)
+ltfrDesign[,1] <- c(1, 1, 1, 1, 1, 1)
+ltfrDesign[,2] <- c(1, 1, 1, 0, 0, 0)
+ltfrDesign[,3] <- c(0, 0, 0, 1, 1, 1)
+ltfrDesign[,4] <- c(1, 0, 0, 1, 0, 0)
+ltfrDesign[,5] <- c(0, 1, 0, 0, 1, 0)
+ltfrDesign[,6] <- c(0, 0, 1, 0, 0, 1)
+
+comboInfo <- findLinearCombos(ltfrDesign)
+comboInfo
+
+ltfrDesign[, -comboInfo$remove]
+
+
+### The preProcess Function ###
+?preProcess
+
+
+### Centering and Scaling ###
+dim(mtcars)
+
+mtcars_scale <- preProcess(mtcars[1:20, ], method = c("center", "scale"))
+mtcars_trn <- predict(mtcars_scale, mtcars[1:20, ])
+summary(mtcars_trn)
+mtcars_tst <- predict(mtcars_scale, mtcars[21:32, ])
+summary(mtcars_tst)
+
+
+### Simple Splitting Based on the Outcome ###
+?createDataPartition
+set.seed(1234567)
+trainIndex <- createDataPartition(iris$Species, 
+                                  p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+createDataPartition(iris$Species, 
+                    p = .8, 
+                    list = TRUE, 
+                    times = 5)
+
+irisTrain <- iris[ trainIndex,]
+irisTest  <- iris[-trainIndex,]
+
+
+### Model Training and Parameter Tuning ###
+data(Sonar)
+str(Sonar)
+
+set.seed(1234567)
+inTraining <- createDataPartition(Sonar$Class, p = .75, list = FALSE)
+training <- Sonar[ inTraining,]
+testing  <- Sonar[-inTraining,]
+
+fitControl <- trainControl(## 10-fold CV
+  method = "repeatedcv",
+  number = 10,
+  ## repeated ten times
+  repeats = 10)
+
+set.seed(1234567)
+gbmFit1 <- train(Class ~ ., 
+                 data = training, 
+                 method = "gbm", 
+                 trControl = fitControl,
+                 verbose = FALSE)
+gbmFit1
+gbmFit1$results
+gbmFit1$bestTune
+
+gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9), 
+                        n.trees = (1:30)*50, 
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+set.seed(1234567)
+gbmFit2 <- train(Class ~ ., 
+                 data = training, 
+                 method = "gbm", 
+                 trControl = fitControl, 
+                 verbose = FALSE, 
+                 tuneGrid = gbmGrid)
+gbmFit2
+
+plot(gbmFit2)  
+plot(gbmFit2, metric = "Kappa")
+plot(gbmFit2, metric = "Kappa", plotType = "level", scales = list(x = list(rot = 90)))
+ggplot(gbmFit2)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           ## Estimate class probabilities
+                           classProbs = TRUE,
+                           ## Evaluate performance using 
+                           ## the following function
+                           summaryFunction = twoClassSummary)
+
+set.seed(1234567)
+gbmFit3 <- train(Class ~ ., 
+                 data = training, 
+                 method = "gbm", 
+                 trControl = fitControl, 
+                 verbose = FALSE, 
+                 tuneGrid = gbmGrid,
+                 metric = "ROC")
+gbmFit3
+
+predict(gbmFit3, newdata = testing, type = "raw") # default
+predict(gbmFit3, newdata = testing, type = "prob")
+
+densityplot(gbmFit3, pch = "|")
+
+
+set.seed(1234567)
+svmFit <- train(Class ~ ., 
+                data = training, 
+                method = "svmRadial", 
+                trControl = fitControl, 
+                preProc = c("center", "scale"),
+                tuneLength = 8,
+                metric = "ROC")
+svmFit
+
+set.seed(1234567)
+rdaFit <- train(Class ~ ., 
+                data = training, 
+                method = "rda", 
+                trControl = fitControl, 
+                tuneLength = 4,
+                metric = "ROC")
+rdaFit   
+
+resamps <- resamples(list(GBM = gbmFit3,
+                          SVM = svmFit,
+                          RDA = rdaFit))
+resamps
+summary(resamps)
+
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+bwplot(resamps, layout = c(3, 1))
+
+trellis.par.set(caretTheme())
+dotplot(resamps, metric = "ROC")
+
+trellis.par.set(theme1)
+xyplot(resamps, what = "BlandAltman")
+
+splom(resamps)
+
+
+difValues <- diff(resamps)
+difValues
+summary(difValues)
+
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+bwplot(difValues, layout = c(3, 1))
+
+trellis.par.set(caretTheme())
+dotplot(difValues)
+
+# https://topepo.github.io/caret/available-models.html
+
+
+# random search
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs = TRUE,
+                           summaryFunction = twoClassSummary,
+                           search = "random")
+
+set.seed(1234567)
+rda_fit <- train(Class ~ ., 
+                 data = training, 
+                 method = "rda",
+                 metric = "ROC",
+                 tuneLength = 30,
+                 trControl = fitControl)
+rda_fit
+
+ggplot(rda_fit) + theme(legend.position = "top")
+
+
+# subsampling for class imbalances
+set.seed(1234567)
+imbal_train <- twoClassSim(10000, intercept = -20, linearVars = 20)
+imbal_test  <- twoClassSim(10000, intercept = -20, linearVars = 20)
+table(imbal_train$Class) # 9455, 545
+
+# down sampling
+set.seed(1234567)
+down_train <- downSample(x = imbal_train[, -ncol(imbal_train)],
+                         y = imbal_train$Class)
+table(down_train$Class) # 545, 545
+
+# up sampling
+set.seed(1234567)
+up_train <- upSample(x = imbal_train[, -ncol(imbal_train)],
+                     y = imbal_train$Class)                         
+table(up_train$Class) # 9455, 9455
+
+
+if (!require(DMwR)) {install.packages("DMwR")}; require(DMwR)
+set.seed(1234567)
+smote_train <- SMOTE(Class ~ ., data  = imbal_train)                         
+table(smote_train$Class) # 2180, 1635
+
+if (!require(ROSE)) {install.packages("ROSE")}; require(ROSE)
+set.seed(1234567)
+rose_train <- ROSE(Class ~ ., data  = imbal_train)$data                         
+table(rose_train$Class) # 5103, 4897
+
+# bagged classification
+ctrl <- trainControl(method = "repeatedcv", 
+                     repeats = 5,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary)
+
+set.seed(1234567)
+orig_fit <- train(Class ~ ., 
+                  data = imbal_train, 
+                  method = "treebag",
+                  nbagg = 50,
+                  metric = "ROC",
+                  trControl = ctrl)
+
+set.seed(1234567)
+down_outside <- train(Class ~ ., 
+                      data = down_train, 
+                      method = "treebag",
+                      nbagg = 50,
+                      metric = "ROC",
+                      trControl = ctrl)
+
+set.seed(1234567)
+up_outside <- train(Class ~ ., 
+                    data = up_train, 
+                    method = "treebag",
+                    nbagg = 50,
+                    metric = "ROC",
+                    trControl = ctrl)
+
+set.seed(1234567)
+rose_outside <- train(Class ~ ., 
+                      data = rose_train, 
+                      method = "treebag",
+                      nbagg = 50,
+                      metric = "ROC",
+                      trControl = ctrl)
+
+
+set.seed(1234567)
+smote_outside <- train(Class ~ ., 
+                       data = smote_train, 
+                       method = "treebag",
+                       nbagg = 50,
+                       metric = "ROC",
+                       trControl = ctrl)
+
+
+outside_models <- list(original = orig_fit,
+                       down = down_outside,
+                       up = up_outside,
+                       SMOTE = smote_outside,
+                       ROSE = rose_outside)
+
+outside_resampling <- resamples(outside_models)
+
+test_roc <- function(model, data) {
+  if (!require(pROC)) {install.packages("pROC")}; require(pROC)
+  roc_obj <- roc(data$Class, 
+                 predict(model, data, type = "prob")[, "Class1"],
+                 levels = c("Class2", "Class1"))
+  ci(roc_obj)
+}
+
+outside_test <- lapply(outside_models, test_roc, data = imbal_test)
+outside_test <- lapply(outside_test, as.vector)
+outside_test <- do.call("rbind", outside_test)
+colnames(outside_test) <- c("lower", "ROC", "upper")
+outside_test <- as.data.frame(outside_test)
+
+summary(outside_resampling, metric = "ROC")
+
+
+# subsampling in modeling process
+ctrl <- trainControl(method = "repeatedcv",
+                     repeats = 5,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     ## new option here:
+                     sampling = "down")
+
+set.seed(1234567)
+down_inside <- train(Class ~ .,
+                     data = imbal_train,
+                     method = "treebag",
+                     nbagg = 50,
+                     metric = "ROC",
+                     trControl = ctrl)
+
+# now just change that option
+ctrl$sampling <- "up"
+
+set.seed(1234567)
+up_inside <- train(Class ~ ., 
+                   data = imbal_train,
+                   method = "treebag",
+                   nbagg = 50,
+                   metric = "ROC",
+                   trControl = ctrl)
+
+ctrl$sampling <- "rose"
+
+set.seed(1234567)
+rose_inside <- train(Class ~ ., 
+                     data = imbal_train,
+                     method = "treebag",
+                     nbagg = 50,
+                     metric = "ROC",
+                     trControl = ctrl)
+
+ctrl$sampling <- "smote"
+
+set.seed(1234567)
+smote_inside <- train(Class ~ ., data = imbal_train,
+                      method = "treebag",
+                      nbagg = 50,
+                      metric = "ROC",
+                      trControl = ctrl)
+
+
+inside_models <- list(original = orig_fit,
+                      down = down_inside,
+                      up = up_inside,
+                      SMOTE = smote_inside,
+                      ROSE = rose_inside)
+
+inside_resampling <- resamples(inside_models)
+
+inside_test <- lapply(inside_models, test_roc, data = imbal_test)
+inside_test <- lapply(inside_test, as.vector)
+inside_test <- do.call("rbind", inside_test)
+colnames(inside_test) <- c("lower", "ROC", "upper")
+inside_test <- as.data.frame(inside_test)
+
+summary(inside_resampling, metric = "ROC")
+
+
+svmControl <- trainControl(method = "repeatedcv",
+                           number = 10, 
+                           repeats = 10,
+                           classProbs = TRUE,
+                           summaryFunction = twoClassSummary,
+                           search = "random")
+set.seed(1234567)
+svmFit <- train(Class ~ ., data = training,
+                method = "svmRadial", 
+                trControl = svmControl, 
+                preProc = c("center", "scale"),
+                metric = "ROC",
+                tuneLength = 15)
+svmFit
+
+# ???
+adaptControl <- trainControl(method = "adaptive_cv",
+                             number = 10, 
+                             repeats = 10,
+                             adaptive = list(min = 5, # minimum number of resamples that be used for each tuning parameter, default 5
+                                             alpha = 0.05, # confidence level
+                                             method = "gls", # "gls" for linear, "BT" for Bradley-Terry model
+                                             complete = TRUE),
+                             classProbs = TRUE,
+                             summaryFunction = twoClassSummary,
+                             search = "random")
+
+set.seed(1234567)
+svmAdapt <- train(Class ~ ., 
+                  data = training,
+                  method = "svmRadial", 
+                  trControl = adaptControl, 
+                  preProc = c("center", "scale"),
+                  metric = "ROC",
+                  tuneLength = 15)
+svmAdapt
+
+
+### variable importance ###
+
+# AUC
+roc_imp <- filterVarImp(x = training[, -ncol(training)], y = training$Class)
+head(roc_imp)
+
+svm_imp <- varImp(svmFit, scale = FALSE)
+svm_imp
+
+plot(svm_imp, top = 20)
+
+
+### Measuring Performance ###
+# regression
+data(BostonHousing)
+
+set.seed(1234567)
+bh_index <- createDataPartition(BostonHousing$medv, 
+                                p = .75, 
+                                list = FALSE)
+bh_tr <- BostonHousing[ bh_index, ]
+bh_te <- BostonHousing[-bh_index, ]
+
+set.seed(1234567)
+lm_fit <- train(medv ~ . + rm:lstat,
+                data = bh_tr, 
+                method = "lm")
+bh_pred <- predict(lm_fit, bh_te)
+
+lm_fit
+
+postResample(pred = bh_pred, obs = bh_te$medv)
+
+# classification with svmFit object
+svmFit
+svmPred <- predict(svmFit, newdata = testing)
+svmPred
+confusionMatrix(svmPred, testing$Class)
+confusionMatrix(svmPred, testing$Class, mode = "prec_recall") # sens_spec, prec_recall, everything
+confusionMatrix(svmPred, testing$Class, mode = "everything")
+
+
+# make example
+set.seed(1234567)
+true_class <- factor(sample(paste0("Class", 1:2), 
+                            size = 1000,
+                            prob = c(.2, .8), replace = TRUE))
+true_class <- sort(true_class)
+class1_probs <- rbeta(sum(true_class == "Class1"), 4, 1)
+class2_probs <- rbeta(sum(true_class == "Class2"), 1, 2.5)
+test_set <- data.frame(obs = true_class,
+                       Class1 = c(class1_probs, class2_probs))
+test_set$Class2 <- 1 - test_set$Class1
+test_set$pred <- factor(ifelse(test_set$Class1 >= .5, "Class1", "Class2"))
+
+ggplot(test_set, aes(x = Class1)) + 
+  geom_histogram(binwidth = .05) + 
+  facet_wrap(~obs) + 
+  xlab("Probability of Class #1")
+confusionMatrix(data = test_set$pred, reference = test_set$obs)
+postResample(pred = test_set$pred, obs = test_set$obs)
+twoClassSummary(test_set, lev = levels(test_set$obs))
+prSummary(test_set, lev = levels(test_set$obs))
+
+
+# Lift Curves
+set.seed(1234567)
+lift_training <- twoClassSim(1000)
+lift_testing  <- twoClassSim(1000)
+
+ctrl <- trainControl(method = "cv", 
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary)
+
+set.seed(1234567)
+fda_lift <- train(Class ~ ., 
+                  data = lift_training,
+                  method = "fda", 
+                  metric = "ROC",
+                  tuneLength = 20,
+                  trControl = ctrl)
+set.seed(1234567)
+lda_lift <- train(Class ~ ., 
+                  data = lift_training,
+                  method = "lda", 
+                  metric = "ROC",
+                  trControl = ctrl)
+
+if (!require(C50)) {install.packages("C50")}; require(C50)
+set.seed(1234567)
+c5_lift <- train(Class ~ .,
+                 data = lift_training,
+                 method = "C5.0", 
+                 metric = "ROC",
+                 tuneLength = 10,
+                 trControl = ctrl,
+                 control = C5.0Control(earlyStopping = FALSE))
+
+## Generate the test set results
+lift_results <- data.frame(Class = lift_testing$Class)
+lift_results$FDA <- predict(fda_lift, lift_testing, type = "prob")[,"Class1"]
+lift_results$LDA <- predict(lda_lift, lift_testing, type = "prob")[,"Class1"]
+lift_results$C5.0 <- predict(c5_lift, lift_testing, type = "prob")[,"Class1"]
+head(lift_results)
+
+trellis.par.set(caretTheme())
+lift_obj <- lift(Class ~ FDA + LDA + C5.0, data = lift_results)
+plot(lift_obj, 
+     values = 60,
+     auto.key = list(columns = 3,
+                     lines = TRUE,
+                     points = FALSE))
+ggplot(lift_obj, values = 60)
+
+trellis.par.set(caretTheme())
+cal_obj <- calibration(Class ~ FDA + LDA + C5.0,
+                       data = lift_results,
+                       cuts = 13)
+plot(cal_obj, 
+     type = "l", 
+     auto.key = list(columns = 3,
+                     lines = TRUE,
+                     points = FALSE))
+
+
+
+# apply -------------------------------------------------------------------
+
+# tapply
+tapply(diamonds$price, diamonds$cut, mean)
+
+# apply
+
+apply(mtcars, 1, mean)
+apply(mtcars, 2, mean, na.rm = TRUE)
+
+# sapply (simple apply) - return vector or matrix
+sapply(mtcars, function(x) mean(x, na.rm = TRUE))
+sapply(mtcars, mean, na.rm = TRUE)
+
+# lapply
+unlist(lapply(mtcars, function(x) mean(x, na.rm = TRUE)))
+
+# vapply 
+sapply(mtcars, fivenum)
+vapply(mtcars, fivenum, c("Min" = 0, "1st Quantile" = 0, "Median" = 0, "3rd Quantile" = 0, "Max" = 0))
+
+# lapply - list
+temp <- split(diamonds, diamonds$cut)
+
+lm_list <- lapply(temp, function(data) {
+  lm.fit <- lm(formula = price ~ carat + depth, 
+               data = data)
+  summary(lm.fit)
+})
+
+lm_list
+
+graph_list <- lapply(temp, function(data) {
+  gp <- ggplot(data) +
+    geom_point(aes(x = carat, y = price, colour = clarity)) +
+    labs(title = names(data))
+  gp
+})
+do.call("grid.arrange", c(graph_list, ncol = 1))
